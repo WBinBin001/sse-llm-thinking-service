@@ -1,16 +1,91 @@
-nodejs SSE 服务
-- Express 
+我将查看技术设计文档并提出优化建议。
 
-提供一个接口 /v1/complete (类似 openai 问答接口complete可能命名不正确 )
+Read file: doc.md
+# NodeJS SSE 大模型思考服务技术设计
 
-流式返回类似下面数据
-- answer 是大模型响应
-- <think></think> 中间是思考过程
-- </think> 之后是回答内容
+## 1. 项目概述
+构建一个基于Express框架的NodeJS服务器，通过服务器发送事件(SSE)技术，提供流式大模型响应服务，包含思考过程和最终回答。
 
-下面是完整数据结构，你需要自行创建一些测试数据返回
+## 2. 技术栈
+- **后端框架**：Express.js
+- **通信方式**：Server-Sent Events (SSE)
+- **数据格式**：JSON
 
-{'code': 200, 'created': 1743675083420, 'data': {'answer': '<think>', 'answerDict': {}, 'question': 'hello', 'requestId': '0d6fb6c6-2', 'sessionId': 'SessionId:xgAAAZTfwwM3:d2c-test-002:1743675083043'}, 'detail': [], 'event': 'message', 'msg': 'OK', 'sequence': 4}
-{'code': 200, 'created': 1743675083520, 'data': {'answer': '\nOkay,', 'answerDict': {}, 'question': 'hello', 'requestId': '0d6fb6c6-2', 'sessionId': 'SessionId:xgAAAZTfwwM3:d2c-test-002:1743675083043'}, 'detail': [], 'event': 'message', 'msg': 'OK', 'sequence': 5}
-{'code': 200, 'created': 1743675083621, 'data': {'answer': ' the user said "', 'answerDict': {}, 'question': 'hello', 'requestId': '0d6fb6c6-2', 'sessionId': 'SessionId:xgAAAZTfwwM3:d2c-test-002:1743675083043'}, 'detail': [], 'event': 'message', 'msg': 'OK', 'sequence': 6}
-{'code': 200, 'created': 1743675086881, 'data': {'answer': '<think>\nOkay, the user said "hello". I need to respond appropriately. Let me think... They might just be greeting me, so a friendly reply is needed. Maybe "Hello! How can I assist you today?" That\'s standard but friendly. Wait, should I add an emoji? Maybe a smiley to keep it warm. Yeah, "Hello! How can I assist you today? 😊" That sounds good. Let me check if there\'s anything else. No, that\'s straightforward and opens the conversation. Alright, I\'ll go with that.\n</think>\n\nHello! How can I assist you today? 😊', 'answerDict': {}, 'question': 'hello', 'requestId': '0d6fb6c6-2', 'sessionId': 'SessionId:xgAAAZTfwwM3:d2c-test-002:1743675083043'}, 'detail': [{'processName': '开始', 'variable': [{'name': 'memoryList', 'value': []}, {'name': 'question', 'value': 'hello'}, {'name': 'memories', 'value': ''}, {'name': 'sessionStatus', 'value': {}}, {'name': 'extraInfo', 'value': {'top_p': 0.95, 'system': '', 'max_tokens': '2000000000', 'requestId': '0d6fb6c6-2', 'top_k': 40, 'temperature': 0.6, 'sessionId': 'SessionId:xgAAAZTfwwM3:d2c-test-002:1743675083043', 'history': '', 'do_sample': True, 'userId': 'd2c-test-002', 'timeout': 600}}], 'processType': 'start'}, {'result': 'IF --> false\nELSE --> true', 'processName': '条件判断', 'costTime': 0, 'startTime': '2025-04-03 18:11:23.133', 'processType': 'condition', 'endTime': '2025-04-03 18:11:23.134'}, {'result': '<think>\nOkay, the user said "hello". I need to respond appropriately. Let me think... They might just be greeting me, so a friendly reply is needed. Maybe "Hello! How can I assist you today?" That\'s standard but friendly. Wait, should I add an emoji? Maybe a smiley to keep it warm. Yeah, "Hello! How can I assist you today? 😊" That sounds good. Let me check if there\'s anything else. No, that\'s straightforward and opens the conversation. Alright, I\'ll go with that.\n</think>\n\nHello! How can I assist you today? 😊', 'modelName': 'QwQ-32B', 'processName': '大模型', 'modelId': 1350143, 'costTime': 3744, 'parameter': {'top_p': 0.95, 'system': '', 'max_tokens': '2000000000', 'stream': True, 'top_k': 40, 'temperature': 0.6, 'do_sample': True, 'history': '', 'n': 1}, 'startTime': '2025-04-03 18:11:23.134', 'processType': 'model', 'metrics': {'numPromptTokens': 9, 'firstTokenTime': 0.05, 'numOutputTokens': 128, 'allTime': 3.5}, 'endTime': '2025-04-03 18:11:26.879', 'prompt': 'hello\n'}, {'processName': '结束', 'variable': [{'name': 'sessionStatus', 'value': {}}, {'name': 'answerDict', 'value': {}}, {'name': 'answer', 'value': '<think>\nOkay, the user said "hello". I need to respond appropriately. Let me think... They might just be greeting me, so a friendly reply is needed. Maybe "Hello! How can I assist you today?" That\'s standard but friendly. Wait, should I add an emoji? Maybe a smiley to keep it warm. Yeah, "Hello! How can I assist you today? 😊" That sounds good. Let me check if there\'s anything else. No, that\'s straightforward and opens the conversation. Alright, I\'ll go with that.\n</think>\n\nHello! How can I assist you today? 😊'}], 'processType': 'end', 'metrics': {'costTime': 3794, 'programBuildTime': 42, 'inputTokens': 9, 'programExecuteTime': 3752, 'outputTokens': 128}}], 'event': 'end', 'msg': 'OK', 'sequence': 41}
+## 3. API设计
+
+### 3.1 主要接口
+**路径**：`/v1/complete`
+**方法**：POST
+**功能**：接收用户问题，返回流式大模型响应
+
+### 3.2 请求参数
+```json
+{
+  "question": "用户问题",
+  "sessionId": "会话ID（可选）",
+  "userId": "用户ID（可选）",
+  "temperature": 0.6,
+  "top_p": 0.95,
+  "top_k": 40,
+  "system": "系统提示词（可选）",
+  "history": "历史记录（可选）"
+}
+```
+
+### 3.3 响应格式
+流式返回JSON对象序列，每个对象包含：
+- `code`: 状态码
+- `created`: 时间戳
+- `data`: 响应数据
+  - `answer`: 大模型响应（含思考过程）
+  - `answerDict`: 额外数据对象
+  - `question`: 原始问题
+  - `requestId`: 请求ID
+  - `sessionId`: 会话ID
+- `detail`: 处理详情数组
+- `event`: 事件类型（"message"或"end"）
+- `msg`: 消息状态
+- `sequence`: 序列号
+
+## 4. 特殊响应格式说明
+- `<think>...</think>`: 包含大模型思考过程
+- 思考标签后为最终答案内容
+
+## 5. 实现细节
+1. 使用Express的SSE机制发送流式响应
+2. 响应过程分阶段：
+   - 初始连接确认
+   - 思考过程开始标记
+   - 思考内容流式传输
+   - 思考结束标记
+   - 最终答案传输
+   - 会话结束
+
+## 6. 示例代码框架
+```javascript
+const express = require('express');
+const app = express();
+
+app.use(express.json());
+
+app.post('/v1/complete', (req, res) => {
+  // 设置SSE响应头
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  
+  // 处理请求并流式返回响应
+  // ...实现逻辑
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`服务已启动，监听端口 ${PORT}`);
+});
+```
+
+## 7. 测试方案
+创建测试脚本模拟大模型响应，包括思考过程和最终答案，使用示例格式进行流式传输测试。
+
+## 8. 错误处理
+在响应中设计错误处理机制，通过适当的状态码和消息通知客户端错误情况。

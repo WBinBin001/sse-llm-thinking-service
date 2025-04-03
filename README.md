@@ -80,9 +80,23 @@ npm run dev
 
 访问服务的根路径（如 http://localhost:3000/）即可打开测试页面，输入问题或选择预设问题进行测试。
 
+curl http;//localhost:3000/health
+
 ## 添加更多测试数据
 
 可以在 `services/testDataService.js` 文件中的 `TEST_DATA` 对象中添加更多测试数据。
+
+
+## curl 接口验证
+
+curl -N -X POST -H "Content-Type: application/json" -H "Accept: text/event-stream" -d '{
+  "question": "什么是人工智能？", 
+  "sessionId": "test-session", 
+  "userId": "test-user", 
+  "temperature": 0.7, 
+  "top_p": 0.9, 
+  "top_k": 30
+}' http://localhost:3000/v1/complete
 
 ## 许可证
 

@@ -170,56 +170,47 @@
         // 关闭之前的EventSource连接
         const eventSource = new EventSource(`/v1/complete?question=${encodeURIComponent(question)}`);
         
-        let thinkingContent = '';
-        let finalAnswer = '';
+        let accumulatedThinking = '';
+        let accumulatedAnswer = '';
+        
+        // 创建初始的思考和回答容器
+        const thinkingDiv = document.createElement('div');
+        thinkingDiv.className = 'thinking';
+        
+        const answerDiv = document.createElement('div');
+        answerDiv.className = 'answer';
+        
+        // 将容器添加到响应区域
+        responseContainer.innerHTML = '';
+        responseContainer.appendChild(thinkingDiv);
+        responseContainer.appendChild(answerDiv);
         
         eventSource.onmessage = (event) => {
           const data = JSON.parse(event.data);
           
-          // 处理思考内容和答案
-          const answer = data.data.answer;
+          // 获取增量更新内容
+          const incrementalContent = data.data.answer;
           
-          if (answer.includes('<think>')) {
+          if (incrementalContent.includes('<think>')) {
             // 提取思考内容
-            const thinkMatch = answer.match(/<think>([\s\S]*?)(?:<\/think>|$)/);
+            const thinkMatch = incrementalContent.match(/<think>([\s\S]*?)(?:<\/think>|$)/);
             if (thinkMatch && thinkMatch[1]) {
-              thinkingContent = thinkMatch[1].trim();
-              
-              // 显示思考内容
-              const thinkingDiv = document.createElement('div');
-              thinkingDiv.className = 'thinking';
-              thinkingDiv.textContent = `思考中: ${thinkingContent}`;
-              responseContainer.innerHTML = '';
-              responseContainer.appendChild(thinkingDiv);
+              // 累加思考内容
+              accumulatedThinking += thinkMatch[1];
+              thinkingDiv.textContent = `思考中: ${accumulatedThinking.trim()}`;
             }
             
             // 提取最终答案部分
-            const answerMatch = answer.match(/<\/think>\s*([\s\S]*)/);
+            const answerMatch = incrementalContent.match(/<\/think>\s*([\s\S]*)/);
             if (answerMatch && answerMatch[1]) {
-              finalAnswer = answerMatch[1].trim();
-              
-              // 显示最终答案
-              const answerDiv = document.createElement('div');
-              answerDiv.className = 'answer';
-              answerDiv.innerHTML = processMarkdown(finalAnswer);
-              
-              // 如果存在思考内容，添加到思考后面
-              if (thinkingContent) {
-                responseContainer.appendChild(answerDiv);
-              } else {
-                responseContainer.innerHTML = '';
-                responseContainer.appendChild(answerDiv);
-              }
+              // 累加答案内容
+              accumulatedAnswer += answerMatch[1];
+              answerDiv.innerHTML = processMarkdown(accumulatedAnswer.trim());
             }
           } else {
-            // 如果没有思考标签，直接显示答案
-            finalAnswer = answer;
-            
-            const answerDiv = document.createElement('div');
-            answerDiv.className = 'answer';
-            answerDiv.innerHTML = processMarkdown(finalAnswer);
-            responseContainer.innerHTML = '';
-            responseContainer.appendChild(answerDiv);
+            // 如果没有思考标签，直接累加答案内容
+            accumulatedAnswer += incrementalContent;
+            answerDiv.innerHTML = processMarkdown(accumulatedAnswer.trim());
           }
           
           // 检查是否是最后一条消息

@@ -80,24 +80,118 @@ function createTestResponse(question) {
   const sessionId = `SessionId:${generateSessionId()}:test-user:${Date.now()}`;
   const requestId = generateUniqueId();
   
-  // 构建标准响应格式
-  return testData.map(item => ({
-    code: 200,
-    created: Date.now(),
-    data: {
-      answer: item.answer,
-      answerDict: {},
-      question: question,
-      requestId: requestId,
-      sessionId: sessionId
-    },
-    detail: item.event === 'end' ? generateDetailInfo(question, item.answer) : [],
-    event: item.event,
-    msg: 'OK',
-    sequence: item.sequence
-  }));
+  // 用于累积答案内容的变量
+  let accumulatedAnswer = '';
+  
+  // 构建标准响应格式，但每次只返回新增内容
+  return testData.map((item, index) => {
+    // 获取当前完整答案
+    const fullAnswer = item.answer;
+    
+    // 计算新增内容
+    let incrementalAnswer;
+    if (index === 0) {
+      // 第一条消息，全部内容都是新增的
+      incrementalAnswer = fullAnswer;
+      accumulatedAnswer = fullAnswer;
+    } else {
+      // 找出与之前内容的差异部分
+      incrementalAnswer = fullAnswer.substring(accumulatedAnswer.length);
+      accumulatedAnswer = fullAnswer;
+    }
+    
+    return {
+      code: 200,
+      created: Date.now(),
+      data: {
+        answer: incrementalAnswer,
+        answerDict: {},
+        question: question,
+        requestId: requestId,
+        sessionId: sessionId
+      },
+      detail: item.event === 'end' ? generateDetailInfo(question, fullAnswer) : [],
+      event: item.event,
+      msg: 'OK',
+      sequence: item.sequence
+    };
+  });
+}
+
+/**
+ * 处理SSE请求
+ * @param {Object} req Express请求对象
+ * @param {Object} res Express响应对象
+ */
+async function handleSSERequest(req, res) {
+  try {
+    // 设置SSE响应头
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+
+    // 从请求中获取参数
+    const method = req.method;
+    let question, sessionId, userId, temperature, top_p, top_k, system, history;
+
+    if (method === 'GET') {
+      // 处理GET请求
+      question = req.query.question;
+      sessionId = req.query.sessionId || `session_${generateUniqueId()}`;
+      userId = req.query.userId || 'anonymous';
+      temperature = parseFloat(req.query.temperature) || 0.6;
+      top_p = parseFloat(req.query.top_p) || 0.95;
+      top_k = parseInt(req.query.top_k) || 40;
+      system = req.query.system || '';
+      history = req.query.history ? JSON.parse(req.query.history) : [];
+    } else {
+      // 处理POST请求
+      const body = req.body;
+      question = body.question;
+      sessionId = body.sessionId || `session_${generateUniqueId()}`;
+      userId = body.userId || 'anonymous';
+      temperature = body.temperature || 0.6;
+      top_p = body.top_p || 0.95;
+      top_k = body.top_k || 40;
+      system = body.system || '';
+      history = body.history || [];
+    }
+
+    if (!question) {
+      return res.status(400).json({
+        code: 400,
+        msg: '缺少问题参数',
+        created: Date.now()
+      });
+    }
+
+    // 获取测试数据响应
+    const responseStream = createTestResponse(question);
+
+    // 发送响应流
+    for (const response of responseStream) {
+      res.write(`data: ${JSON.stringify(response)}\n\n`);
+      
+      // 为模拟流式返回，添加延迟
+      if (response.event !== 'end') {
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+    }
+
+    // 结束响应
+    res.end();
+  } catch (error) {
+    console.error('处理请求时出错:', error);
+    res.status(500).json({
+      code: 500,
+      msg: '服务器内部错误',
+      created: Date.now()
+    });
+  }
 }
 
 module.exports = {
-  createTestResponse
+  createTestResponse,
+  handleSSERequest
 }; 
