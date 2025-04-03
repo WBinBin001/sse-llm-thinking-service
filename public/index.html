@@ -56,12 +56,30 @@
       white-space: pre-wrap;
       overflow-y: auto;
     }
+    .thinking-container {
+      margin-bottom: 20px;
+      border-bottom: 1px dashed #ccc;
+      padding-bottom: 15px;
+    }
+    .thinking-title {
+      font-weight: bold;
+      color: #666;
+      margin-bottom: 5px;
+    }
     .thinking {
       color: #888;
       font-style: italic;
       padding: 10px;
       background-color: #f5f5f5;
       border-radius: 4px;
+      margin-bottom: 10px;
+    }
+    .answer-container {
+      margin-top: 20px;
+    }
+    .answer-title {
+      font-weight: bold;
+      color: #333;
       margin-bottom: 10px;
     }
     .answer {
@@ -172,18 +190,46 @@
         
         let accumulatedThinking = '';
         let accumulatedAnswer = '';
+        let finalAnswer = '';
+        let insideThinking = false;
         
-        // 创建初始的思考和回答容器
+        // 创建思考容器
+        const thinkingContainer = document.createElement('div');
+        thinkingContainer.className = 'thinking-container';
+        
+        // 创建思考标题
+        const thinkingTitle = document.createElement('div');
+        thinkingTitle.className = 'thinking-title';
+        thinkingTitle.textContent = '思考过程:';
+        thinkingContainer.appendChild(thinkingTitle);
+        
+        // 创建思考内容
         const thinkingDiv = document.createElement('div');
         thinkingDiv.className = 'thinking';
+        thinkingContainer.appendChild(thinkingDiv);
         
+        // 创建答案容器
+        const answerContainer = document.createElement('div');
+        answerContainer.className = 'answer-container';
+        
+        // 创建答案标题
+        const answerTitle = document.createElement('div');
+        answerTitle.className = 'answer-title';
+        answerTitle.textContent = '回答:';
+        answerContainer.appendChild(answerTitle);
+        
+        // 创建答案内容
         const answerDiv = document.createElement('div');
         answerDiv.className = 'answer';
+        answerContainer.appendChild(answerDiv);
         
         // 将容器添加到响应区域
         responseContainer.innerHTML = '';
-        responseContainer.appendChild(thinkingDiv);
-        responseContainer.appendChild(answerDiv);
+        responseContainer.appendChild(thinkingContainer);
+        responseContainer.appendChild(answerContainer);
+        
+        // 初始时隐藏答案容器，等有内容时再显示
+        answerContainer.style.display = 'none';
         
         eventSource.onmessage = (event) => {
           const data = JSON.parse(event.data);
@@ -191,33 +237,70 @@
           // 获取增量更新内容
           const incrementalContent = data.data.answer;
           
-          if (incrementalContent.includes('<think>')) {
-            // 提取思考内容
-            const thinkMatch = incrementalContent.match(/<think>([\s\S]*?)(?:<\/think>|$)/);
-            if (thinkMatch && thinkMatch[1]) {
-              // 累加思考内容
-              accumulatedThinking += thinkMatch[1];
-              thinkingDiv.textContent = `思考中: ${accumulatedThinking.trim()}`;
+          // 处理最后一条消息（包含完整的内容）
+          if (data.event === 'end') {
+            const fullContent = data.data.answer;
+            const thinkRegex = /<think>([\s\S]*?)<\/think>/;
+            const thinkMatch = fullContent.match(thinkRegex);
+            
+            if (thinkMatch) {
+              // 提取完整的思考过程
+              accumulatedThinking = thinkMatch[1].trim();
+              thinkingDiv.textContent = accumulatedThinking;
+              thinkingContainer.style.display = 'block';
+              
+              // 提取真实回答部分（在</think>之后的所有内容）
+              const parts = fullContent.split('</think>');
+              if (parts.length > 1) {
+                finalAnswer = parts[1].trim();
+                answerDiv.innerHTML = processMarkdown(finalAnswer);
+                answerContainer.style.display = 'block';
+              }
+            } else {
+              // 没有思考标签，全部当作回答
+              finalAnswer = fullContent;
+              answerDiv.innerHTML = processMarkdown(finalAnswer);
+              answerContainer.style.display = 'block';
+              thinkingContainer.style.display = 'none';
             }
             
-            // 提取最终答案部分
-            const answerMatch = incrementalContent.match(/<\/think>\s*([\s\S]*)/);
-            if (answerMatch && answerMatch[1]) {
-              // 累加答案内容
-              accumulatedAnswer += answerMatch[1];
-              answerDiv.innerHTML = processMarkdown(accumulatedAnswer.trim());
-            }
-          } else {
-            // 如果没有思考标签，直接累加答案内容
-            accumulatedAnswer += incrementalContent;
-            answerDiv.innerHTML = processMarkdown(accumulatedAnswer.trim());
-          }
-          
-          // 检查是否是最后一条消息
-          if (data.event === 'end') {
             eventSource.close();
             loader.style.display = 'none';
             submitBtn.disabled = false;
+            return;
+          }
+          
+          // 处理增量更新
+          if (incrementalContent.includes('<think>')) {
+            insideThinking = true;
+            const thinkingText = incrementalContent.replace('<think>', '');
+            accumulatedThinking += thinkingText;
+            thinkingDiv.textContent = accumulatedThinking.trim();
+            thinkingContainer.style.display = 'block';
+          } else if (incrementalContent.includes('</think>')) {
+            const parts = incrementalContent.split('</think>');
+            // 更新思考部分
+            if (insideThinking) {
+              accumulatedThinking += parts[0];
+              thinkingDiv.textContent = accumulatedThinking.trim();
+            }
+            insideThinking = false;
+            
+            // 如果有答案部分
+            if (parts.length > 1 && parts[1].trim()) {
+              accumulatedAnswer = parts[1].trim();
+              answerDiv.innerHTML = processMarkdown(accumulatedAnswer);
+              answerContainer.style.display = 'block';
+            }
+          } else if (insideThinking) {
+            // 在思考标签内的内容
+            accumulatedThinking += incrementalContent;
+            thinkingDiv.textContent = accumulatedThinking.trim();
+          } else {
+            // 不在思考标签内，是真实回答
+            accumulatedAnswer += incrementalContent;
+            answerDiv.innerHTML = processMarkdown(accumulatedAnswer);
+            answerContainer.style.display = 'block';
           }
         };
         
