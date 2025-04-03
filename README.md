@@ -88,7 +88,7 @@ curl http;//localhost:3000/health
 
 
 ## curl 接口验证
-
+```shell
 curl -N -X POST -H "Content-Type: application/json" -H "Accept: text/event-stream" -d '{
   "question": "什么是人工智能？", 
   "sessionId": "test-session", 
@@ -97,7 +97,7 @@ curl -N -X POST -H "Content-Type: application/json" -H "Accept: text/event-strea
   "top_p": 0.9, 
   "top_k": 30
 }' http://localhost:3000/v1/complete
-
+```
 ## 许可证
 
 ISC 
