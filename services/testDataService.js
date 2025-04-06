@@ -43,8 +43,8 @@ const DEFAULT_RESPONSE = [
   {sequence: 1, event: 'message', answer: '<think>'},
   {sequence: 2, event: 'message', answer: '\n正在思考如何回答这个问题...'},
   {sequence: 3, event: 'message', answer: '\n这是一个我需要详细分析的问题。\n</think>\n\n我理解您的问题，这需要详细分析。由于这是一个测试模式，我无法提供完整的实时回答，但在实际系统中，这里会返回对应问题的详细解答。'},
-  {sequence: 1, event: 'message', answer: ', 有屁就放!'},
-  {sequence: 4, event: 'end', answer: '<think>\n正在思考如何回答这个问题...\n这是一个我需要详细分析的问题。\n</think>\n\n我理解您的问题，这需要详细分析。由于这是一个测试模式，我无法提供完整的实时回答，但在实际系统中，这里会返回对应问题的详细解答。, 有屁就放!'}
+  {sequence: 5, event: 'message', answer: ', 有屁就放!'},
+  {sequence: 6, event: 'end', answer: '<think>\n正在思考如何回答这个问题...\n这是一个我需要详细分析的问题。\n</think>\n\n我理解您的问题，这需要详细分析。由于这是一个测试模式，我无法提供完整的实时回答，但在实际系统中，这里会返回对应问题的详细解答。, 有屁就放!'}
 ];
 
 // 生成唯一ID
@@ -116,6 +116,8 @@ async function handleSSERequest(req, res) {
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('Access-Control-Allow-Origin', '*');
+    
+    console.log('[SSE-处理] 设置了SSE头部');
 
     // 从请求中获取参数
     const method = req.method;
@@ -131,6 +133,8 @@ async function handleSSERequest(req, res) {
       top_k = parseInt(req.query.top_k) || 40;
       system = req.query.system || '';
       history = req.query.history ? JSON.parse(req.query.history) : [];
+      
+      console.log('[SSE-GET处理] 解析参数成功:', { question, sessionId, userId });
     } else {
       // 处理POST请求
       const body = req.body;
@@ -142,9 +146,12 @@ async function handleSSERequest(req, res) {
       top_k = body.top_k || 40;
       system = body.system || '';
       history = body.history || [];
+      
+      console.log('[SSE-POST处理] 解析参数成功:', { question, sessionId, userId });
     }
 
     if (!question) {
+      console.error('[SSE-处理] 错误: 缺少问题参数');
       return res.status(400).json({
         code: 400,
         msg: '缺少问题参数',
@@ -153,22 +160,35 @@ async function handleSSERequest(req, res) {
     }
 
     // 获取测试数据响应
+    console.log('[SSE-处理] 开始创建响应数据流');
     const responseStream = createTestResponse(question);
+    console.log('[SSE-处理] 响应数据流创建完成, 消息数量:', responseStream.length);
 
     // 发送响应流
+    let messageCount = 0;
     for (const response of responseStream) {
-      res.write(`data: ${JSON.stringify(response)}\n\n`);
+      const eventData = `data: ${JSON.stringify(response)}\n\n`;
+      console.log(`[SSE-发送] 发送第${++messageCount}条消息, 事件类型:${response.event}, 长度:${eventData.length}字节`);
+      
+      const success = res.write(eventData);
+      if (!success) {
+        console.error('[SSE-发送] 写入失败，客户端可能已断开连接');
+        break;
+      }
       
       // 为模拟流式返回，添加延迟
       if (response.event !== 'end') {
-        await new Promise(resolve => setTimeout(resolve, 300));
+        const delay = 300;
+        console.log(`[SSE-发送] 延迟${delay}ms后发送下一条消息`);
+        await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
 
     // 结束响应
+    console.log('[SSE-处理] 所有消息发送完毕，结束响应');
     res.end();
   } catch (error) {
-    console.error('处理请求时出错:', error);
+    console.error('[SSE-处理] 处理请求时出错:', error);
     res.status(500).json({
       code: 500,
       msg: '服务器内部错误',
